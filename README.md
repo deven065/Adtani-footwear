@@ -257,3 +257,4 @@ Internal use only - Adtani Footwear Business
 ---
 
 Built with ❤️ using Next.js, Supabase, and Vercel
+# adtani-footwear
