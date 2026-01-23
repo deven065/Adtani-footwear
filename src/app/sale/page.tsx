@@ -5,10 +5,14 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 export default function QuickSalePage() {
+  const [searchMode, setSearchMode] = useState<'barcode' | 'manual'>('barcode')
   const [barcode, setBarcode] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<any[]>([])
   const [variant, setVariant] = useState<any>(null)
   const [quantity, setQuantity] = useState('1')
   const [price, setPrice] = useState('')
+  const [discount, setDiscount] = useState('0')
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,11 +72,69 @@ export default function QuickSalePage() {
 
       setVariant(data)
       setPrice(data.products?.mrp || '')
+      setDiscount('0')
       setLoading(false)
     } catch (err: any) {
       setError('Error searching product')
       setLoading(false)
     }
+  }
+
+  const searchProducts = async () => {
+    if (!searchQuery.trim()) return
+
+    setLoading(true)
+    setError(null)
+    setSearchResults([])
+
+    try {
+      const { data, error: searchError } = await supabase
+        .from('inventory_with_details')
+        .select('*')
+        .eq('store_id', userStore)
+        .gt('quantity', 0)
+        .or(`brand.ilike.%${searchQuery}%,model_name.ilike.%${searchQuery}%`)
+        .limit(20)
+
+      if (searchError) throw searchError
+
+      // Transform data to match expected format
+      const transformedData = data?.map((item: any) => ({
+        id: item.variant_id,
+        size: item.size,
+        color: item.color,
+        barcode: item.barcode,
+        products: {
+          brand: item.brand,
+          model_name: item.model_name,
+          mrp: item.mrp,
+          category: item.category
+        },
+        inventory: [{
+          quantity: item.quantity,
+          store_id: item.store_id
+        }]
+      })) || []
+
+      setSearchResults(transformedData)
+      setLoading(false)
+    } catch (err: any) {
+      setError('Error searching products')
+      setLoading(false)
+    }
+  }
+
+  const selectProduct = (product: any) => {
+    setVariant(product)
+    setPrice(product.products?.mrp || '')
+    setDiscount('0')
+    setSearchResults([])
+  }
+
+  const calculateFinalPrice = () => {
+    const basePrice = parseFloat(price) || 0
+    const discountAmount = parseFloat(discount) || 0
+    return Math.max(0, basePrice - discountAmount)
   }
 
   const handleSale = async (e: React.FormEvent) => {
@@ -100,8 +162,9 @@ export default function QuickSalePage() {
           store_id: userStore,
           event_type: 'SALE',
           quantity_change: -saleQty,
-          price_per_unit: price ? parseFloat(price) : null,
-          created_by: user?.id
+          price_per_unit: calculateFinalPrice(),
+          created_by: user?.id,
+          notes: discount !== '0' ? `Discount: ₹${discount}` : null
         })
 
       if (saleError) throw saleError
@@ -112,9 +175,12 @@ export default function QuickSalePage() {
       // Reset form
       setTimeout(() => {
         setBarcode('')
+        setSearchQuery('')
+        setSearchResults([])
         setVariant(null)
         setQuantity('1')
         setPrice('')
+        setDiscount('0')
         setSuccess(false)
         barcodeInputRef.current?.focus()
       }, 2000)
@@ -128,18 +194,53 @@ export default function QuickSalePage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="px-4 py-4 flex items-center gap-3">
-          <button
-            onClick={() => router.back()}
-            className="text-gray-600 hover:text-gray-900"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div>
-            <h1 className="text-lg font-bold text-gray-900">Quick Sale</h1>
-            <p className="text-sm text-gray-600">Scan barcode to sell</p>
+        <div className="px-4 py-4">
+          <div className="flex items-center gap-3 mb-3">
+            <button
+              onClick={() => router.back()}
+              className="text-gray-600 hover:text-gray-900"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">Quick Sale</h1>
+              <p className="text-sm text-gray-600">
+                {searchMode === 'barcode' ? 'Scan barcode to sell' : 'Search product manually'}
+              </p>
+            </div>
+          </div>
+
+          {/* Search Mode Toggle */}
+          <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
+            <button
+              onClick={() => {
+                setSearchMode('barcode')
+                setSearchQuery('')
+                setSearchResults([])
+              }}
+              className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                searchMode === 'barcode'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              📷 Barcode
+            </button>
+            <button
+              onClick={() => {
+                setSearchMode('manual')
+                setBarcode('')
+              }}
+              className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                searchMode === 'manual'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              🔍 Manual
+            </button>
           </div>
         </div>
       </header>
@@ -161,57 +262,142 @@ export default function QuickSalePage() {
         )}
 
         {/* Barcode Scanner */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Scan or Enter Barcode
-          </label>
-          <div className="flex gap-2">
-            <input
-              ref={barcodeInputRef}
-              type="text"
-              value={barcode}
-              onChange={(e) => setBarcode(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && searchByBarcode()}
-              placeholder="Scan or type barcode..."
-              className="flex-1 min-w-0 px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-800 focus:border-transparent font-mono text-sm placeholder:text-gray-600"
-            />
-            <button
-              onClick={searchByBarcode}
-              disabled={loading || !barcode.trim()}
-              className="flex-shrink-0 bg-gray-900 text-white px-4 py-3 rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              )}
-            </button>
+        {searchMode === 'barcode' && (
+          <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Scan or Enter Barcode
+            </label>
+            <div className="flex gap-2">
+              <input
+                ref={barcodeInputRef}
+                type="text"
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && searchByBarcode()}
+                placeholder="Scan or type barcode..."
+                className="flex-1 min-w-0 px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-800 focus:border-transparent font-mono text-sm placeholder:text-gray-600"
+              />
+              <button
+                onClick={searchByBarcode}
+                disabled={loading || !barcode.trim()}
+                className="flex-shrink-0 bg-gray-900 text-white px-4 py-3 rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Manual Search */}
+        {searchMode === 'manual' && !variant && (
+          <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Search Products
+            </label>
+            <div className="flex gap-2 mb-3">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && searchProducts()}
+                placeholder="Search by brand or model..."
+                className="flex-1 min-w-0 px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-800 focus:border-transparent text-sm text-black placeholder:text-gray-400"
+              />
+              <button
+                onClick={searchProducts}
+                disabled={loading || !searchQuery.trim()}
+                className="flex-shrink-0 bg-gray-900 text-white px-4 py-3 rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+
+            {/* Search Results */}
+            {searchResults.length > 0 && (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {searchResults.map((product) => (
+                  <button
+                    key={product.id}
+                    onClick={() => selectProduct(product)}
+                    className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <p className="font-semibold text-gray-900">{product.products?.brand}</p>
+                        <p className="text-sm text-gray-600">{product.products?.model_name}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Size {product.size} • {product.color}
+                        </p>
+                      </div>
+                      <div className="text-right ml-4">
+                        <p className="text-sm font-semibold text-green-600">
+                          {product.inventory?.[0]?.quantity || 0} pairs
+                        </p>
+                        <p className="text-xs text-gray-600">₹{product.products?.mrp}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {searchResults.length === 0 && searchQuery && !loading && (
+              <p className="text-sm text-gray-500 text-center py-4">No products found</p>
+            )}
+          </div>
+        )}
 
         {/* Product Details & Sale Form */}
         {variant && (
           <form onSubmit={handleSale} className="space-y-4">
+            {/* Back to Search Button for Manual Mode */}
+            {searchMode === 'manual' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setVariant(null)
+                  setSearchQuery('')
+                  setSearchResults([])
+                }}
+                className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1 mb-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Search another product
+              </button>
+            )}
+            
             <div className="bg-white rounded-lg border border-gray-200 p-4">
               <h3 className="font-semibold text-gray-900 mb-3">Product Details</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Brand:</span>
-                  <span className="font-medium">{variant.products?.brand}</span>
+                  <span className="font-medium text-gray-900">{variant.products?.brand}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Model:</span>
-                  <span className="font-medium">{variant.products?.model_name}</span>
+                  <span className="font-medium text-gray-900">{variant.products?.model_name}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Size:</span>
-                  <span className="font-medium">{variant.size}</span>
+                  <span className="font-medium text-gray-900">{variant.size}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Color:</span>
-                  <span className="font-medium">{variant.color}</span>
+                  <span className="font-medium text-gray-900">{variant.color}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-gray-200">
                   <span className="text-gray-600">Available:</span>
@@ -247,14 +433,49 @@ export default function QuickSalePage() {
                 required
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-800 focus:border-transparent text-lg font-semibold text-black"
               />
+              {variant.products?.mrp && (
+                <p className="text-xs text-gray-500 mt-1">MRP: ₹{variant.products.mrp}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Discount (₹)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value)}
+                min="0"
+                max={price}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-800 focus:border-transparent text-lg font-semibold text-black"
+              />
+              <p className="text-xs text-gray-500 mt-1">Optional: Enter discount amount</p>
             </div>
 
             {price && quantity && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex justify-between items-center">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
+                {discount !== '0' && parseFloat(discount) > 0 && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-blue-700">Original Price:</span>
+                    <span className="text-blue-900 line-through">
+                      ₹{(parseFloat(price) * parseInt(quantity)).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                {discount !== '0' && parseFloat(discount) > 0 && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-blue-700">Discount:</span>
+                    <span className="text-red-600 font-medium">
+                      -₹{(parseFloat(discount) * parseInt(quantity)).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center pt-2 border-t border-blue-300">
                   <span className="text-blue-900 font-medium">Total Amount:</span>
                   <span className="text-2xl font-bold text-blue-900">
-                    ₹{(parseFloat(price) * parseInt(quantity)).toFixed(2)}
+                    ₹{(calculateFinalPrice() * parseInt(quantity)).toFixed(2)}
                   </span>
                 </div>
               </div>

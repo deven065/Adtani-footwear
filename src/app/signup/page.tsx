@@ -9,6 +9,7 @@ export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
+  const [role, setRole] = useState<'owner' | 'manager' | 'staff'>('staff')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -26,6 +27,7 @@ export default function SignupPage() {
       options: {
         data: {
           full_name: fullName,
+          role: role,
         },
       },
     })
@@ -36,14 +38,6 @@ export default function SignupPage() {
     } else {
       setSuccess(true)
       setLoading(false)
-      
-      // If email confirmation is disabled, redirect immediately
-      if (data.user && !data.user.identities?.length) {
-        setTimeout(() => {
-          router.push('/dashboard')
-          router.refresh()
-        }, 1500)
-      }
     }
   }
 
@@ -53,11 +47,11 @@ export default function SignupPage() {
         <div className="max-w-md w-full">
           <div className="bg-green-50 border border-green-200 text-green-800 px-6 py-4 rounded-lg text-center">
             <h2 className="text-xl font-bold mb-2">Account Created! 🎉</h2>
-            <p className="text-sm">Your profile has been set up automatically.</p>
-            <p className="text-sm mt-2">Redirecting to dashboard...</p>
+            <p className="text-sm">Your account has been created successfully.</p>
+            <p className="text-sm mt-2">Please login to continue.</p>
           </div>
           <div className="text-center mt-4">
-            <Link href="/login" className="text-sm text-gray-600 hover:text-gray-900">
+            <Link href="/login" className="inline-block px-6 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800">
               Go to Login
             </Link>
           </div>
@@ -99,6 +93,26 @@ export default function SignupPage() {
                 className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-800 focus:border-transparent text-lg text-black placeholder:text-gray-600"
                 placeholder="John Doe"
               />
+            </div>
+
+            <div>
+              <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+                Role
+              </label>
+              <select
+                id="role"
+                required
+                value={role}
+                onChange={(e) => setRole(e.target.value as 'owner' | 'manager' | 'staff')}
+                className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-800 focus:border-transparent text-lg text-black"
+              >
+                <option value="staff">Staff</option>
+                <option value="manager">Manager</option>
+                <option value="owner">Admin/Owner</option>
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Staff: Basic access | Manager: Store management | Admin: Full access
+              </p>
             </div>
 
             <div>

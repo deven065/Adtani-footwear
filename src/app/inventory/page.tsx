@@ -5,7 +5,7 @@ import InventoryList from '@/components/InventoryList'
 import SearchBar from '@/components/SearchBar'
 
 interface InventoryPageProps {
-  searchParams: Promise<{ q?: string }>
+  searchParams: Promise<{ q?: string; lowstock?: string }>
 }
 
 export default async function InventoryPage({ searchParams }: InventoryPageProps) {
@@ -29,12 +29,18 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
 
   const params = await searchParams
   const query = params.q || ''
+  const lowStockOnly = params.lowstock === 'true'
 
   // Build inventory query based on role
   let inventoryQuery = supabase
     .from('inventory_with_details')
     .select('*')
     .gt('quantity', 0)
+
+  // Low stock filter
+  if (lowStockOnly) {
+    inventoryQuery = inventoryQuery.lt('quantity', 5)
+  }
 
   // Staff can only see their store's inventory
   if (profile.role === 'staff' && profile.store_id) {
@@ -67,7 +73,9 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </Link>
-            <h1 className="text-xl font-bold text-gray-900">Inventory</h1>
+            <h1 className="text-xl font-bold text-gray-900">
+              {lowStockOnly ? 'Low Stock Items' : 'Inventory'}
+            </h1>
           </div>
           <div>
             <SearchBar />
@@ -77,11 +85,11 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
 
       <main className="px-4 py-4">
         {inventory && inventory.length > 0 ? (
-          <InventoryList items={inventory} userRole={profile.role} />
+          <InventoryList items={inventory} userRole={profile.role} showStoreInfo={profile.role === 'owner'} />
         ) : (
           <div className="text-center py-12">
             <p className="text-gray-500">
-              {query ? 'No items found' : 'No inventory available'}
+              {query ? 'No items found' : lowStockOnly ? 'No low stock items' : 'No inventory available'}
             </p>
           </div>
         )}

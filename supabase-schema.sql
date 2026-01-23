@@ -233,7 +233,7 @@ BEGIN
     NEW.id,
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
-    'owner', -- First user is owner, subsequent users can be changed by owner
+    COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'staff'), -- Use role from signup, default to staff
     default_store_id,
     TRUE
   );

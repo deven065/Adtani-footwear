@@ -124,7 +124,7 @@ export default async function DashboardPage() {
           {/* Quick Stats */}
           <div className="grid grid-cols-2 gap-4 mb-6">
             <QuickStatCard title="Today's Sales" value={Math.abs(todaySales || 0).toString()} />
-            <QuickStatCard title="Low Stock Items" value={(lowStockCount || 0).toString()} alert={(lowStockCount || 0) > 0} />
+            <QuickStatCard title="Low Stock Items" value={(lowStockCount || 0).toString()} alert={(lowStockCount || 0) > 0} link="/inventory?lowstock=true" />
             {['owner', 'manager'].includes(profile.role) && (
               <>
                 <QuickStatCard title="Total Inventory" value={totalItems.toString()} />
